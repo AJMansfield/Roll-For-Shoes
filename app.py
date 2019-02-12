@@ -7,31 +7,33 @@ import re
 from slugify import slugify
 import dice
 import random
+import psycopg2
+from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
+
+
+from data import engine, Base, Player, Char, Skill
 
 logging.basicConfig(level=logging.INFO)
 
 log = logging.getLogger('rfs')
 bot = commands.Bot('!')
 
-chars = {
-    341044668269854740: 'muuug',
-}
-xp = {
-    'muuug': 0,
-    'bob': 0,
-}
-levels = {
-    'muuug': None,
-    'bob': None,
-}
-skills = {
-    'muuug': {
-        'do-anything': 1,
-    },
-    'bob': {
-        'do-anything': 1,
-    },
-}
+Session = sessionmaker(bind=engine)
+
+@contextmanager
+def session_scope():
+    """Provide a transactional scope around a series of operations."""
+    session = Session()
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
 
 def regional_indicator(c:str):
     return chr(ord(c.strip().lower()[0]) - ord('a') + ord('🇦'))
@@ -43,123 +45,227 @@ def token_generator():
 roll_token = token_generator()
 last_token = 'a'
 rolls = {
-    # <token>: (<mention>, <char>, <skill>, <message>)
+    # <token>: (<skill_id>, <comment>, <context>)
 }
 
-char_re = re.compile(r'\s*(?:([^.#0-9]*)\.)?([^.#0-9]*)\s*#?\s*(.*)')
-def parse_char_roll(player, arg):
-    player = int(player)
-    char, skill, comment = char_re.match(arg).groups()
-    if not char:
-        char = chars[player]
-    char = slugify(char)
-    skill = slugify(skill)
-    if not skill:
-        skill = 'do-anything'
-    return char, skill
+def get_or_create_player(session, ctx):
+    player = session.query(Player).get(ctx.message.author.id)
+    if not player:
+        player = Player(id=ctx.message.author.id, name=ctx.message.author.mention)
+        session.add(player)
+    return player
+
+def get_char(session, ctx, name):
+    if name:
+        slug = slugify(name)
+        char = session.query(Char).filter(Char.slug == slug).one()
+    else:
+        char = get_or_create_player(session, ctx).char
+    return char
+
+def get_skill(session, ctx, char_name, skill_name):
+    skill_slug = slugify(skill_name)
+    if not skill_slug:
+        skill_slug = 'do-anything'
+    if char_name:
+        char_slug = slugify(char_name)
+        skill = session.query(Skill).join(Skill.char).filter(Char.slug == char_slug, Skill.slug == skill_slug).one()
+    else:
+        skill = session.query(Skill).join(Skill.char).join(Char.players).filter(Player.id == ctx.message.author.id, Skill.slug == skill_slug).one()
+    return skill
+
+@bot.command(pass_context=True)
+async def newchar(ctx, *, arg=''):
+    arg = arg.strip()
+    try:
+        with session_scope() as session:
+            player = get_or_create_player(session, ctx)
+            char = Char(name=arg, slug=slugify(arg))
+            player.char = char
+            session.add(char)
+            do_anything = Skill(char=char)
+            session.add(do_anything)
+    except:
+        log.exception("newchar")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
+
+@bot.command(pass_context=True)
+async def usechar(ctx, *, arg=''):
+    arg = arg.strip()
+    try:
+        with session_scope() as session:
+            player = get_or_create_player(session, ctx)
+            char = get_char(session, ctx, arg)
+            player.char = char
+    except:
+        log.exception("usechar")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
+
+level_re = re.compile(r'\s*(?:([^.>#0-9]*)\.)?([^.>#0-9]*)\s*>\s*([^.>#0-9]*)\s*#?.*')
+@bot.command(pass_context=True)
+async def upgrade(ctx, *, arg=''):
+    try:
+        char_name, skill_name_from, skill_name_to = level_re.match(arg).groups()
+        with session_scope() as session:
+            char = get_char(session, ctx, char_name)
+            base = get_skill(session, ctx, char_name, skill_name_from)
+            assert base.xp is not None
+            assert char.xp >= base.xp
+            session.add(Skill(name=skill_name_to, slug=slugify(skill_name_to), level=base.level+1, char=char, parent=base))
+            base.xp = None
+    except:
+        log.exception("upgrade")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
+
+@bot.command(pass_context=True)
+async def skills(ctx, *, arg=''):
+    arg = arg.strip()
+    try:
+        with session_scope() as session:
+            char = get_char(session, ctx, arg)
+            skills = session.query(Skill).filter(Skill.char == char).order_by(Skill.modified)
+            msg = '{}\n'.format(ctx.message.author.mention)
+            msg += "{}\n".format(char.name)
+            msg += "XP: {}\n".format(char.xp)
+            msg += '\n'.join("{} {} {}".format(skill.name, skill.level, levelmsg(skill)) for skill in skills)
+            await bot.say(msg)
+    except:
+        log.exception("skills")
+        await bot.add_reaction(ctx.message, '⁉')
 
 @bot.command(pass_context=True)
 async def roll(ctx, *, arg=''):
     global last_token
-    char, skill = parse_char_roll(ctx.message.author.id, arg)
-    token = next(roll_token)
-    rolls[token] = (ctx.message.author.mention, char, skill, ctx.message)
-    await bot.add_reaction(ctx.message, regional_indicator(token))
-    last_token = token
+    try:
+        with session_scope() as session:
+            skill, comment = parse_char_roll(session, ctx, arg)
+            token = next(roll_token)
+            rolls[token] = (skill, comment, ctx)
+            await bot.add_reaction(ctx.message, regional_indicator(token))
+            last_token = token
+    except:
+        log.exception("roll")
+        await bot.add_reaction(ctx.message, '⁉')
 
 toke_re = re.compile(r'\s*(?:([A-Z])\s+)?(.*)')
 @bot.command(pass_context=True)
 async def vs(ctx, *, arg=''):
     global last_token
-    token, remain = toke_re.match(arg).groups()
-    if not token:
-        token = last_token
-    token = slugify(token)
-    am, ac, ask, message = rolls[token]
+    try:
+        with session_scope() as session:
+            token, arg = toke_re.match(arg).groups()
+            if not token:
+                token = last_token
+            token = slugify(token)
 
-    bm = ctx.message.author.mention
-    bc, bsk = parse_char_roll(ctx.message.author.id, remain)
+            a_skill, a_comment, a_ctx = rolls[token]
+            session.add(a_skill)
+            # am, ac, ask, message = 
 
-    if ac == bc:
+            b_skill, b_comment = parse_char_roll(session, ctx, arg)
+            b_ctx = ctx
+
+            if a_skill.char == b_skill.char:
+                await bot.add_reaction(b_ctx.message, '⁉')
+                return
+
+            ar, arm = roll_skill(a_skill)
+            br, brm = roll_skill(b_skill)
+
+            if ar > br:
+                winmsg = "{} wins!".format(a_skill.char.name)
+                brm += add_xp(b_skill.char)
+            elif ar == br:
+                winmsg = "tie!"
+            else: #ar < br:
+                winmsg = "{} wins!".format(b_skill.char.name)
+                arm += add_xp(a_skill.char)
+
+            arm += levelmsg(a_skill)
+            brm += levelmsg(b_skill)
+
+            await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
+            del rolls[token]
+            await bot.say("{}\n{} {}\n{} {}".format(winmsg, a_comment, arm, b_comment, brm))
+    except:
+        log.exception("vs")
         await bot.add_reaction(ctx.message, '⁉')
-        return
 
-    ar, arm, al, axl = roll_skill(ac, ask)
-    br, brm, bl, bxl = roll_skill(bc, bsk)
-
-    if ar > br:
-        winmsg = "{} wins!".format(ac)
-        brm += add_xp(bc)
-    elif ar == br:
-        winmsg = "tie!"
-    else: #ar < br:
-        winmsg = "{} wins!".format(bc)
-        arm += add_xp(ac)
-
-    arm += levelup(ac, al+1, axl)
-    brm += levelup(bc, bl+1, bxl)
-
-    await bot.remove_reaction(message, regional_indicator(token), bot.user)
-    del rolls[token]
-    await bot.say("{}\n{} {}\n{} {}".format(winmsg, am, arm, bm, brm))
-
-dice_re = re.compile(r'([^#]*)#?.*')
+dice_re = re.compile(r'([^#]*)#?(.*)')
 @bot.command(pass_context=True)
 async def dc(ctx, *, arg=''):
     global last_token
-    token, remain = toke_re.match(arg).groups()
-    if not token:
-        token = last_token
-    token = slugify(token)
-    am, ac, ask, message = rolls[token]
-
-    bm = ctx.message.author.mention
-    bd, = dice_re.match(remain).groups()
-
-    ar, arm, al, axl = roll_skill(ac, ask)
     try:
-        br = int(dice.roll(bd))
-        brm = "`{}` = {}".format(bd, br)
-    except dice.DiceBaseException:
+        with session_scope() as session:
+            token, remain = toke_re.match(arg).groups()
+            if not token:
+                token = last_token
+            token = slugify(token)
+            a_skill, a_comment, a_ctx = rolls[token]
+            session.add(a_skill)
+
+            b_die, b_comment = dice_re.match(remain).groups()
+
+            try:
+                br = int(dice.roll(b_die))
+                brm = "DC `{}` = {}".format(b_die, br)
+            except dice.DiceBaseException:
+                await bot.add_reaction(ctx.message, '⁉')
+                return
+
+            ar, arm = roll_skill(a_skill)
+
+            if ar > br:
+                winmsg = "{} suceeds!".format(a_skill.char.name)
+            else: #ar <= br:
+                winmsg = "{} fails!".format(a_skill.char.name)
+                arm += add_xp(a_skill.char)
+            
+            arm += levelmsg(a_skill)
+
+            await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
+            del rolls[token]
+            await bot.say("{}\n{} {}\n{} {}".format(winmsg, a_comment, arm, b_comment, brm))
+    except:
+        log.exception("dc")
         await bot.add_reaction(ctx.message, '⁉')
-        return
 
-    if ar > br:
-        winmsg = "{} suceeds!".format(ac)
-    else: #ar <= br:
-        winmsg = "{} fails!".format(ac)
-        arm += add_xp(ac)
+char_re = re.compile(r'\s*(?:([^.#0-9]*)\.)?([^.#0-9]*)\s*#?\s*(.*)')
+def parse_char_roll(session, ctx, arg):
+    char_name, skill_name, comment = char_re.match(arg).groups()
+    skill = get_skill(session, ctx, char_name, skill_name)
+    return skill, comment
+
+def roll_skill(skill):
+    roll = [random.randint(1,6) for _ in range(skill.level)]
     
-    arm += levelup(ac, al+1, axl)
+    xp_left = sum(0 if x == 6 else 1 for x in roll)
+    if skill.xp is None or skill.xp > xp_left:
+        skill.xp = xp_left
 
-    await bot.remove_reaction(message, regional_indicator(token), bot.user)
-    del rolls[token]
-    await bot.say("{}\n{} {}\n{} {}".format(winmsg, am, arm, bm, brm))
-
-def roll_skill(char, skill):
-    level = skills[char][skill]
-    roll = [random.randint(1,6) for _ in range(level)]
-    rollstr = ' '.join(str(r) for r in roll)
+    rollstr = ' '.join(str(x) for x in roll)
     value = sum(roll)
-    xpleft = sum(0 if x == 6 else 1 for x in roll)
     
-    rollmsg = "{}.{}: `{}d6` = [{}] = {}".format(char, skill, level, rollstr, value)
-    return value, rollmsg, level, xpleft
+    rollmsg = "({}.{}): `{}d6` = [{}] = {}".format(skill.char.slug, skill.slug, skill.level, rollstr, value)
+    return value, rollmsg
 
 def add_xp(char):
-    xp[char] += 1
-    return " [+1 XP: {}]".format(xp[char])
+    char.xp += 1
+    return " [+1 XP]"
 
-def levelup(char, level, xp_left):
-    if xp_left == 0:
-        levels[char] = (level, xp_left)
-        return " [level up to {}!]".format(level)
-    elif xp_left <= xp[char]:
-        levels[char] = (level, xp_left)
-        return " [level up to {} for {} XP!]".format(level, xp_left)
-    else:
-        levels[char] = None
+def levelmsg(skill):
+    if skill.xp == 0:
+        return " [level up!]"
+    elif skill.xp is None:
         return ""
+    else:
+        return " [{}/{} to level up]".format(skill.char.xp, skill.xp)
 
 # @client.event
 # async def on_message(message):
