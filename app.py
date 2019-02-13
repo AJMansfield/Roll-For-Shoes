@@ -10,7 +10,7 @@ import random
 import psycopg2
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
-
+import asyncio
 import asciitree
 from collections import OrderedDict
 
@@ -359,11 +359,19 @@ async def vs(ctx, *, arg=''):
 
             embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
 
-            await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
-            del rolls[token]
-            await bot.say(embed=embed)
             if a_ctx.message.channel != b_ctx.message.channel:
-                await bot.send_message(a_ctx.message.channel, embed=embed)
+                await asyncio.gather(
+                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
+                    bot.send_message(a_ctx.message.channel, embed=embed),
+                    bot.send_message(b_ctx.message.channel, embed=embed),
+                )
+            else:
+                await asyncio.gather(
+                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
+                    bot.send_message(a_ctx.message.channel, embed=embed),
+                )
+            
+            del rolls[token]
     except:
         log.exception("vs")
         await bot.add_reaction(ctx.message, '⁉')
@@ -432,11 +440,20 @@ async def dc(ctx, *, arg=''):
 
             embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
 
-            await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
-            del rolls[token]
-            await bot.say(embed=embed)
             if a_ctx.message.channel != b_ctx.message.channel:
-                await bot.send_message(a_ctx.message.channel, embed=embed)
+                await asyncio.gather(
+                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
+                    bot.send_message(a_ctx.message.channel, embed=embed),
+                    bot.send_message(b_ctx.message.channel, embed=embed),
+                )
+            else:
+                await asyncio.gather(
+                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
+                    bot.send_message(a_ctx.message.channel, embed=embed),
+                )
+            
+            del rolls[token]
+
     except:
         log.exception("dc")
         await bot.add_reaction(ctx.message, '⁉')
