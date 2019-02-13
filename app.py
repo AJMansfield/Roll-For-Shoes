@@ -487,26 +487,57 @@ def levelmsg(skill):
     else:
         return " ({}/{})".format(skill.char.xp, skill.xp)
 
-# @client.event
-# async def on_message(message):
-#     # we do not want the bot to reply to itself
-#     if message.author == client.user:
-#         return
 
-#     if not message.content.startswith('!hello'):
-#         return
+renamechar_re = re.compile(r'\s*(?:([^.>#0-9]*))?\s*>\s*([^.>#0-9]*)\s*#?.*')
+@bot.command(
+    pass_context = True,
+)
+async def renamechar(ctx, *, arg=''):
+    """Renames a character.
 
-#     if message.author.id in users:
-#         users 
-#     msg = 'Hello {0.author.mention}'.format(message)
-#     await client.send_message(message.channel, msg)
+    Change the name of a character, defaulting to the current character.
 
-# @client.event
-# async def on_ready():
-#     log.info('Logged in as')
-#     log.info(client.user.name)
-#     log.info(client.user.id)
-#     log.info('------')
+    Usage:
+        !renamechar [CHARACTER] > NEW_NAME [# COMMENT]
+    Examples:
+        !renamechar Agor > Chief Agor
+    """
+    try:
+        old_name, new_name = renamechar_re.match(arg).groups()
+        with session_scope() as session:
+            char = get_char(session, ctx, old_name)
+            char.name = new_name
+            char.slug = slugify(new_name)
+    except:
+        log.exception("renamechar")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
+
+@bot.command(
+    pass_context = True,
+)
+async def renameskill(ctx, *, arg=''):
+    """Renames a skill.
+
+    Changes the name of an existing skill. By default uses the current character.
+
+    Usage:
+        !renameskill [CHARACTER  .] SKILL > NEW_NAME [# COMMENT]
+    Examples:
+        !renameskill sharp shiny club > sharp club
+    """
+    try:
+        char_name, skill_name, new_name = level_re.match(arg).groups()
+        with session_scope() as session:
+            skill = get_skill(session, ctx, char_name, skill_name)
+            skill.name = new_name
+            skill.slug = slugify(new_name)
+    except:
+        log.exception("renamechar")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
 
 from keys import keys
 if __name__ == '__main__':
