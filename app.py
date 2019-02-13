@@ -102,8 +102,21 @@ def make_skilltree(session, char, fmt=lambda sk: '{0.id}'.format(sk)):
 
     return '\n'.join(a.replace(' ', space_char) + b for a,b in (tree_re.match(l).groups() for l in msg.split('\n')))
 
-@bot.command(pass_context=True)
+@bot.command(
+    pass_context = True,
+    aliases = ['new'],
+)
 async def newchar(ctx, *, arg=''):
+    """Create new character.
+
+    Creates a new character with the given name, and sets it as your default character.
+
+    Usage:
+        !newchar CHARACTER
+    Examples:
+        !newchar Muuug
+        !newchar Doug Doug  
+    """
     arg = arg.strip()
     try:
         with session_scope() as session:
@@ -119,8 +132,21 @@ async def newchar(ctx, *, arg=''):
     else:
         await bot.add_reaction(ctx.message, '⏫')
 
-@bot.command(pass_context=True)
+@bot.command(
+    pass_context = True,
+    aliases = ['use'],
+)
 async def usechar(ctx, *, arg=''):
+    """Set character as default.
+
+    Sets the character with the given name as your default character.
+
+    Usage:
+        !usechar CHARACTER
+    Examples:
+        !usechar Muuug
+        !usechar Doug Doug  
+    """
     arg = arg.strip()
     try:
         with session_scope() as session:
@@ -134,8 +160,22 @@ async def usechar(ctx, *, arg=''):
         await bot.add_reaction(ctx.message, '⏫')
 
 level_re = re.compile(r'\s*(?:([^.>#0-9]*)\.)?([^.>#0-9]*)\s*>\s*([^.>#0-9]*)\s*#?.*')
-@bot.command(pass_context=True)
-async def upgrade(ctx, *, arg=''):
+@bot.command(
+    pass_context = True,
+    aliases = ['level', 'up', 'upgrade'],
+)
+async def levelup(ctx, *, arg=''):
+    """Level up a skill.
+
+    Levels an existing skill and adds a new subskill to your character, automatically deducting the appropriate amount of XP.
+
+    Usage:
+        !levelup [CHARACTER  .] [PARENT_SKILL] > NEW_SKILL [# COMMENT]
+    Examples:
+        !levelup axe > chop tree
+        !levelup Doug Doug . do anything > run away  # level up a different character 
+        !levelup > axe                               # defaults to <current char>.do-anything
+    """
     try:
         char_name, skill_name_from, skill_name_to = level_re.match(arg).groups()
         with session_scope() as session:
@@ -151,31 +191,35 @@ async def upgrade(ctx, *, arg=''):
     else:
         await bot.add_reaction(ctx.message, '⏫')
 
-@bot.command(pass_context=True)
+@bot.command(
+    pass_context = True,
+    aliases = ['character', 'c', 'skills'],
+)
 async def char(ctx, *, arg=''):
+    """Show a character's stats.
+
+    Displays the XP total and skill tree for a character.
+
+    Usage:
+        !char [CHARACTER]
+    Examples:        
+        !char Doug Doug     # can explicitly specify the character
+        !char               # defaults to current character
+    """
     arg = arg.strip()
     try:
         with session_scope() as session:
             char = get_char(session, ctx, arg)
-            embed = discord.Embed(title=char.name)
-            embed.add_field(name="XP", value="{}".format(char.xp), inline=True)
-            # embed.add_field(
-            #     name="Skills", 
-            #     value="\n".join(
-            #         "**{0.name} {0.level}** ({1.xp})".format(skill, skill_xp_msg(skill)) for skill in skills
-            #     ),
-            #     inline=False,
-            # )
+            embed = discord.Embed(
+                title=char.name,
+                description="**XP:** {0.xp}".format(char)
+            )
             embed.add_field(
                 name="Skills", 
                 value=make_skilltree(session, char, 
                     fmt=lambda sk: '**{0.name} {0.level}** {1}'.format(sk, skill_xp_msg(sk))),
                 inline=False,
             )
-            # msg = '{}\n'.format(ctx.message.author.mention)
-            # msg += "{}\n".format(char.name)
-            # msg += "XP: {}\n".format(char.xp)
-            # msg += '\n'.join("{} {} {}".format(skill.name, skill.level, levelmsg(skill)) for skill in skills)
         await bot.say(embed=embed)
     except:
         log.exception("skills")
@@ -198,14 +242,32 @@ def skill_xp_msg(skill):
     if skill.xp is None:
         return ''
     elif skill.xp == 0:
-        return '!' # '⬆'
+        return '(!)' # '⬆'
     # elif skill.xp in numbers:
     #     return numbers[skill.xp]
     else:
         return '({})'.format(skill.xp)
 
-@bot.command(pass_context=True)
+@bot.command(
+    pass_context = True,
+    aliases = ['r'],
+)
 async def roll(ctx, *, arg=''):
+    """Roll for a skill check.
+
+    Begins a skill check using the specified skill.
+    If not specified, the command will use the current character's do-anything skill.
+
+    The bot will react to this command with a letter to indicate it's waiting for the GM or another character to oppose the check with `!vs` or `!dc`.
+    This letter is used as a "token" to allow later commands to specify which of multiple rolls they are opposing.
+
+    Usage:
+        !roll [CHARACTER .] [SKILL] [# COMMENT]
+    Examples:        
+        !roll axe                  # defaults to current character
+        !roll Doug Doug.run away   # can specify another character
+        !roll                      # defaults to using the do-anything skill
+    """
     global last_token
     try:
         with session_scope() as session:
@@ -219,8 +281,29 @@ async def roll(ctx, *, arg=''):
         await bot.add_reaction(ctx.message, '⁉')
 
 toke_re = re.compile(r'\s*(?:([A-Z])\s+)?(.*)')
-@bot.command(pass_context=True)
+@bot.command(
+    pass_context = True,
+    aliases = ['v'],
+)
 async def vs(ctx, *, arg=''):
+    """Oppose a skill check with a character skill.
+
+    Rolls a given skill check against a check previously started with `!roll`, and outputs the result.
+    The semantics for specifying which skill to use are the same as for `!roll`.
+
+    By default the bot will oppose the most-recent skill check.
+    To specify which roll you're opposing, add the token letter as the first argument.
+    Otherwise, the bot will use the most recent roll.
+    
+    This command does not allow characters to oppose their own rolls, even if rolled by a different player.
+    Different characters rolled by the same player are allowed however.
+
+    Usage:
+        !vs [TOKEN] [CHARACTER .] [SKILL] [# COMMENT]
+    Examples:        
+        !vs P               # oppose the roll P with the current character's do anything skill
+        !vs Dorg Dorg.run   # oppose the most recent roll with Dorg Dorg's run skill.
+    """
     global last_token
     try:
         with session_scope() as session:
@@ -255,16 +338,37 @@ async def vs(ctx, *, arg=''):
             arm += levelmsg(a_skill)
             brm += levelmsg(b_skill)
 
+            embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
+
             await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
             del rolls[token]
-            await bot.say("{}\n{} {}\n{} {}".format(winmsg, a_comment, arm, b_comment, brm))
+            await bot.say(embed=embed)
     except:
         log.exception("vs")
         await bot.add_reaction(ctx.message, '⁉')
 
 dice_re = re.compile(r'([^#]*)#?(.*)')
-@bot.command(pass_context=True)
+@bot.command(
+    pass_context = True,
+)
 async def dc(ctx, *, arg=''):
+    """Oppose a skill check with a fixed value or die roll.
+
+    Rolls a given die expression against a check previously started with `!roll`, and outputs the result.
+    This command supports general die expressions including arithmetic operations.
+
+    By default the bot will oppose the most-recent skill check.
+    To specify which roll you're opposing, add the token letter as the first argument.
+    Otherwise, the bot will use the most recent roll.
+
+    Usage:
+        !dc [TOKEN] DIE_EXPRESSION [# COMMENT]
+    Examples:        
+        !dc 4d6       # roll 4d6 against the most recent skill roll
+        !dc X 28      # oppose roll X with a fixed DC of 28
+        !dc 2d6 + 5   # compute 2d6+5 and oppose the most recent roll with the result
+
+    """
     global last_token
     try:
         with session_scope() as session:
@@ -294,9 +398,11 @@ async def dc(ctx, *, arg=''):
             
             arm += levelmsg(a_skill)
 
+            embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
+
             await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
             del rolls[token]
-            await bot.say("{}\n{} {}\n{} {}".format(winmsg, a_comment, arm, b_comment, brm))
+            await bot.say(embed=embed)
     except:
         log.exception("dc")
         await bot.add_reaction(ctx.message, '⁉')
