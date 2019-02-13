@@ -201,6 +201,7 @@ async def char(ctx, *, arg=''):
     Displays the remaining XP total and skill tree for a character.
     Skills that have the potential for being leveled up will show the XP cost in parenthesis after the skill.
     Skills with pending level-ups from rolling all 6's will instead show an exclamation point.
+    Skills that do not show anything after the skill name are not eligible for being levelled up; a skill must be used before it can be leveled.
 
     Usage:
         !char [CHARACTER]
@@ -263,6 +264,10 @@ async def roll(ctx, *, arg=''):
     The bot will react to this command with a letter to indicate it's waiting for the GM or another character to oppose the check with `!vs` or `!dc`.
     This letter is used as a "token" to allow later commands to specify which of multiple rolls they are opposing.
 
+    See the documentation for `!vs` or `!dc` for an explanation of what happens when a roll is resolved.
+
+    Comments are saved and included in the final roll output.
+
     Usage:
         !roll [CHARACTER .] [SKILL] [# COMMENT]
     Examples:        
@@ -300,9 +305,12 @@ async def vs(ctx, *, arg=''):
     1 XP is automatically awarded to the loser of the roll, and the level-up cost for both character skills is updated based on the number of 6's rolled.
     If a character rolls all 6's they are awarded a pending level up in that skill.
     See the docs for `!levelup` for how to redeem level-ups.
+    Note that if you do not redeem a level up, it will be lost next time you use the skill.
     
     This command does not allow characters to oppose their own rolls, even if rolled by a different player.
     Different characters rolled by the same player are allowed however.
+
+    Comments are saved and included in the final roll output.
 
     Usage:
         !vs [TOKEN] [CHARACTER .] [SKILL] [# COMMENT]
@@ -369,10 +377,13 @@ async def dc(ctx, *, arg=''):
     1 XP is automatically awarded if the character loses the roll, and the level-up cost for their skills is updated based on the number of 6's rolled.
     If a character rolls all 6's they are awarded a pending level up in that skill.
     See the docs for `!levelup` for how to redeem level-ups.
+    Note that if you do not redeem a level up, it will be lost next time you use the skill.
 
     By default the bot will oppose the most-recent skill check.
     To specify which roll you're opposing, add the token letter as the first argument.
     Otherwise, the bot will use the most recent roll.
+
+    Comments are saved and included in the final roll output.
 
     Usage:
         !dc [TOKEN] DIE_EXPRESSION [# COMMENT]
@@ -431,7 +442,7 @@ def roll_skill(skill):
     roll = [random.randint(1,6) for _ in range(skill.level)]
 
     skill.xp = sum(0 if x == 6 else 1 for x in roll)
-    
+
     rollstr = ' '.join(str(x) for x in roll)
     value = sum(roll)
     
