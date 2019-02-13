@@ -296,6 +296,10 @@ async def vs(ctx, *, arg=''):
     By default the bot will oppose the most-recent skill check.
     To specify which roll you're opposing, add the token letter as the first argument.
     Otherwise, the bot will use the most recent roll.
+
+    1 XP is automatically awarded to the loser of the roll, and the level-up cost for both character skills is updated based on the number of 6's rolled.
+    If a character rolls all 6's they are awarded a pending level up in that skill.
+    See the docs for `!levelup` for how to redeem level-ups.
     
     This command does not allow characters to oppose their own rolls, even if rolled by a different player.
     Different characters rolled by the same player are allowed however.
@@ -340,6 +344,9 @@ async def vs(ctx, *, arg=''):
             arm += levelmsg(a_skill)
             brm += levelmsg(b_skill)
 
+            arm = arm.replace(') (', ', ') # if both xp up and level message, put in same paren
+            brm = brm.replace(') (', ', ') # if both xp up and level message, put in same paren
+
             embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
 
             await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
@@ -358,6 +365,10 @@ async def dc(ctx, *, arg=''):
 
     Rolls a given die expression against a check previously started with `!roll`, and outputs the result.
     This command supports general die expressions including arithmetic operations.
+
+    1 XP is automatically awarded if the character loses the roll, and the level-up cost for their skills is updated based on the number of 6's rolled.
+    If a character rolls all 6's they are awarded a pending level up in that skill.
+    See the docs for `!levelup` for how to redeem level-ups.
 
     By default the bot will oppose the most-recent skill check.
     To specify which roll you're opposing, add the token letter as the first argument.
@@ -399,6 +410,7 @@ async def dc(ctx, *, arg=''):
                 arm += add_xp(a_skill.char)
             
             arm += levelmsg(a_skill)
+            arm = arm.replace(') (', ', ') # if both xp up and level message, put in same paren
 
             embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
 
@@ -417,11 +429,9 @@ def parse_char_roll(session, ctx, arg):
 
 def roll_skill(skill):
     roll = [random.randint(1,6) for _ in range(skill.level)]
-    
-    xp_left = sum(0 if x == 6 else 1 for x in roll)
-    if skill.xp is None or skill.xp > xp_left:
-        skill.xp = xp_left
 
+    skill.xp = sum(0 if x == 6 else 1 for x in roll)
+    
     rollstr = ' '.join(str(x) for x in roll)
     value = sum(roll)
     
@@ -430,15 +440,15 @@ def roll_skill(skill):
 
 def add_xp(char):
     char.xp += 1
-    return " [+1 XP]"
+    return " (+1)"
 
 def levelmsg(skill):
     if skill.xp == 0:
-        return " [level up!]"
+        return " (!)"
     elif skill.xp is None:
         return ""
     else:
-        return " [{}/{} to level up]".format(skill.char.xp, skill.xp)
+        return " ({}/{})".format(skill.char.xp, skill.xp)
 
 # @client.event
 # async def on_message(message):
