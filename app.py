@@ -198,7 +198,9 @@ async def levelup(ctx, *, arg=''):
 async def char(ctx, *, arg=''):
     """Show a character's stats.
 
-    Displays the XP total and skill tree for a character.
+    Displays the remaining XP total and skill tree for a character.
+    Skills that have the potential for being leveled up will show the XP cost in parenthesis after the skill.
+    Skills with pending level-ups from rolling all 6's will instead show an exclamation point.
 
     Usage:
         !char [CHARACTER]
