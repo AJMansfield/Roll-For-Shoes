@@ -312,6 +312,8 @@ async def vs(ctx, *, arg=''):
 
     Comments are saved and included in the final roll output.
 
+    This command can be issued from any channel as long as the token is correct, not just the channel used for the initial roll.
+
     Usage:
         !vs [TOKEN] [CHARACTER .] [SKILL] [# COMMENT]
     Examples:        
@@ -360,6 +362,8 @@ async def vs(ctx, *, arg=''):
             await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
             del rolls[token]
             await bot.say(embed=embed)
+            if a_ctx.message.channel != b_ctx.message.channel:
+                await bot.send_message(a_ctx.message.channel, embed=embed)
     except:
         log.exception("vs")
         await bot.add_reaction(ctx.message, '⁉')
@@ -385,6 +389,8 @@ async def dc(ctx, *, arg=''):
 
     Comments are saved and included in the final roll output.
 
+    This command can be issued from any channel as long as the token is correct, not just the channel used for the initial roll.
+
     Usage:
         !dc [TOKEN] DIE_EXPRESSION [# COMMENT]
     Examples:        
@@ -404,6 +410,7 @@ async def dc(ctx, *, arg=''):
             session.add(a_skill)
 
             b_die, b_comment = dice_re.match(remain).groups()
+            b_ctx = ctx
 
             try:
                 br = int(dice.roll(b_die))
@@ -428,6 +435,8 @@ async def dc(ctx, *, arg=''):
             await bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user)
             del rolls[token]
             await bot.say(embed=embed)
+            if a_ctx.message.channel != b_ctx.message.channel:
+                await bot.send_message(a_ctx.message.channel, embed=embed)
     except:
         log.exception("dc")
         await bot.add_reaction(ctx.message, '⁉')
