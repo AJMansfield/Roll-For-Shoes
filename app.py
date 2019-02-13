@@ -11,6 +11,8 @@ import psycopg2
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
 
+import asciitree
+from collections import OrderedDict
 
 from data import engine, Base, Player, Char, Skill
 
@@ -74,6 +76,32 @@ def get_skill(session, ctx, char_name, skill_name):
         skill = session.query(Skill).join(Skill.char).join(Char.players).filter(Player.id == ctx.message.author.id, Skill.slug == skill_slug).one()
     return skill
 
+def get_tree(session, skill, fmt=lambda sk: '{0.id}'.format(sk)):
+    d = OrderedDict()
+    for sub in skill.children:
+        d[fmt(sub)] = get_tree(session, sub, fmt)
+    return d
+
+tree_re = re.compile(r'(\W*?)( *[-*_\w].*)')
+def make_skilltree(session, char, fmt=lambda sk: '{0.id}'.format(sk)):
+    tr = asciitree.LeftAligned(
+        draw = asciitree.BoxStyle(
+            gfx = asciitree.drawing.BOX_HEAVY,
+            horiz_len=0,
+            indent=0,
+            label_space=1
+        )
+    )
+    space_char = '\u2001' # '\u2000' for BOX_LIGHT
+
+    root_skills = session.query(Skill).filter(Skill.char == char, Skill.parent == None).order_by(Skill.created)
+    d = OrderedDict()
+    for skill in root_skills:
+        d[fmt(skill)] = get_tree(session, skill, fmt)
+    msg = tr(d)
+
+    return '\n'.join(a.replace(' ', space_char) + b for a,b in (tree_re.match(l).groups() for l in msg.split('\n')))
+
 @bot.command(pass_context=True)
 async def newchar(ctx, *, arg=''):
     arg = arg.strip()
@@ -124,20 +152,57 @@ async def upgrade(ctx, *, arg=''):
         await bot.add_reaction(ctx.message, '⏫')
 
 @bot.command(pass_context=True)
-async def skills(ctx, *, arg=''):
+async def char(ctx, *, arg=''):
     arg = arg.strip()
     try:
         with session_scope() as session:
             char = get_char(session, ctx, arg)
-            skills = session.query(Skill).filter(Skill.char == char).order_by(Skill.modified)
-            msg = '{}\n'.format(ctx.message.author.mention)
-            msg += "{}\n".format(char.name)
-            msg += "XP: {}\n".format(char.xp)
-            msg += '\n'.join("{} {} {}".format(skill.name, skill.level, levelmsg(skill)) for skill in skills)
-            await bot.say(msg)
+            embed = discord.Embed(title=char.name)
+            embed.add_field(name="XP", value="{}".format(char.xp), inline=True)
+            # embed.add_field(
+            #     name="Skills", 
+            #     value="\n".join(
+            #         "**{0.name} {0.level}** ({1.xp})".format(skill, skill_xp_msg(skill)) for skill in skills
+            #     ),
+            #     inline=False,
+            # )
+            embed.add_field(
+                name="Skills", 
+                value=make_skilltree(session, char, 
+                    fmt=lambda sk: '**{0.name} {0.level}** {1}'.format(sk, skill_xp_msg(sk))),
+                inline=False,
+            )
+            # msg = '{}\n'.format(ctx.message.author.mention)
+            # msg += "{}\n".format(char.name)
+            # msg += "XP: {}\n".format(char.xp)
+            # msg += '\n'.join("{} {} {}".format(skill.name, skill.level, levelmsg(skill)) for skill in skills)
+        await bot.say(embed=embed)
     except:
         log.exception("skills")
         await bot.add_reaction(ctx.message, '⁉')
+
+def skill_xp_msg(skill):
+    numbers = {
+        0: ':zero:',
+        1: ':one:',
+        2: ':two:',
+        3: ':three:',
+        4: ':four:',
+        5: ':five:', 
+        6: ':six:',
+        7: ':seven:',
+        8: ':eight:',
+        9: ':nine:',
+        10: ':keycap_ten:',
+    }
+    if skill.xp is None:
+        return ''
+    elif skill.xp == 0:
+        return '!' # '⬆'
+    # elif skill.xp in numbers:
+    #     return numbers[skill.xp]
+    else:
+        return '({})'.format(skill.xp)
 
 @bot.command(pass_context=True)
 async def roll(ctx, *, arg=''):
@@ -289,4 +354,5 @@ def levelmsg(skill):
 #     log.info('------')
 
 from keys import keys
-bot.run(keys['discord-token'])
+if __name__ == '__main__':
+    bot.run(keys['discord-token'])

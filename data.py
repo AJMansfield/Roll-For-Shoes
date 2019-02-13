@@ -46,7 +46,7 @@ class Skill(Base):
     modified = Column(DateTime(timezone=True), onupdate=func.now())
 
     char = relationship('Char', back_populates='skills')
-    parent = relationship('Skill', remote_side=[id], backref='children')
-    # children = relationship('Skill', back_populates='parent')
+    parent = relationship('Skill', remote_side=[id], back_populates='children')
+    children = relationship('Skill', remote_side=[parent_id], back_populates='parent', order_by='Skill.created')
 
 Base.metadata.create_all(engine)
