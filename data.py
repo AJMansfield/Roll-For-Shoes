@@ -5,7 +5,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
 
-engine = create_engine('postgresql://postgres:password@localhost/rfs')
+from keys import keys
+
+engine = create_engine(keys['db-conn'])
 Base = declarative_base()
 
 class Player(Base):
