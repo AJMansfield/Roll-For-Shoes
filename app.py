@@ -14,7 +14,7 @@ import asyncio
 import asciitree
 from collections import OrderedDict
 
-from data import engine, Base, Guild, Player, Char, Skill
+from data import engine, Base, Player, Char, Skill
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,24 +50,17 @@ rolls = {
     # <token>: (<skill_id>, <comment>, <context>)
 }
 
-def get_or_create_guild(session, ctx):
-    guild = session.query(Guild).get(ctx.message.server.id)
-    if not guild:
-        guild = Guild(id=ctx.message.server.id)
-        session.add(guild)
-    return guild
-
 def get_or_create_player(session, ctx):
-    player = session.query(Player).get(ctx.message.author.id)
+    player = session.query(Player).where(user_id=ctx.message.author.id, guild_id=ctx.message.server.id).first()
     if not player:
-        player = Player(id=ctx.message.author.id, name=ctx.message.author.name)
+        player = Player(user_id=ctx.message.author.id, guild_id=ctx.message.server.id, name=ctx.message.author.name)
         session.add(player)
     return player
 
 def get_char(session, ctx, name):
     if name:
         slug = slugify(name)
-        char = session.query(Char).filter(Char.slug == slug).one()
+        char = session.query(Char).filter(Char.guild_id == ctx.message.server.id, Char.slug == slug).one()
     else:
         char = get_or_create_player(session, ctx).char
     return char
@@ -80,7 +73,7 @@ def get_skill(session, ctx, char_name, skill_name):
         char_slug = slugify(char_name)
         skill = session.query(Skill).join(Skill.char).filter(Char.slug == char_slug, Skill.slug == skill_slug).one()
     else:
-        skill = session.query(Skill).join(Skill.char).join(Char.players).filter(Player.id == ctx.message.author.id, Skill.slug == skill_slug).one()
+        skill = session.query(Skill).join(Skill.char).join(Char.players).filter(Player.user_id == ctx.message.author.id, Skill.slug == skill_slug).one()
     return skill
 
 def get_tree(session, skill, fmt=lambda sk: '{0.id}'.format(sk)):
@@ -130,7 +123,7 @@ async def newchar(ctx, *, arg=''):
     try:
         with session_scope() as session:
             player = get_or_create_player(session, ctx)
-            char = Char(name=arg, slug=slugify(arg))
+            char = Char(name=arg, slug=slugify(arg), guild_id=ctx.message.server.id)
             player.char = char
             session.add(char)
             do_anything = Skill(char=char)

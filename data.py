@@ -10,28 +10,20 @@ from keys import keys
 engine = create_engine(keys['db-conn'])
 Base = declarative_base()
 
-class Guild(Base):
-    __tablename__ = 'guilds'
-
-    id = Column(BigInteger, autoincrement=False, primary_key=True) # discord guild ID
-
-    players = relationship('Player', back_populates='guild')
-    chars = relationship('Char', back_populates='guild')
-    # rolls = relationship('Roll', back_populates='guild')
-
 class Player(Base):
     __tablename__ = 'players'
 
-    id = Column(BigInteger, autoincrement=False, primary_key=True)
+    id = Column(Integer, primary_key=True)
 
-    guild_id = Column(BigInteger, ForeignKey('guilds.id'))
+    user_id = Column(BigInteger) # discord user ID
+    guild_id = Column(BigInteger) # discord guild ID
+
     name = Column(String)
     char_id = Column(Integer, ForeignKey('chars.id'))
 
     created = Column(DateTime(timezone=True), server_default=func.now())
     modified = Column(DateTime(timezone=True), onupdate=func.now())
 
-    guild = relationship('Guild', back_populates='players')
     char = relationship('Char', back_populates='players')
 
 class Char(Base):
@@ -39,7 +31,8 @@ class Char(Base):
 
     id = Column(Integer, primary_key=True)
 
-    guild_id = Column(BigInteger, ForeignKey('guilds.id'))
+    guild_id = Column(BigInteger) # discord guild ID
+
     name = Column(String, nullable=False)
     slug = Column(String, nullable=False, unique=True)
     xp = Column(Integer, nullable=False, server_default='0')
@@ -47,8 +40,7 @@ class Char(Base):
     created = Column(DateTime(timezone=True), server_default=func.now())
     modified = Column(DateTime(timezone=True), onupdate=func.now())
 
-    guild = relationship('Guild', back_populates='chars')
-    players = relationship('Player', cascade="all,delete", back_populates='char')
+    players = relationship('Player', back_populates='char')
     skills = relationship('Skill', cascade="all,delete", back_populates='char')
 
 class Skill(Base):
