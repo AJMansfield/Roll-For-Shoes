@@ -39,16 +39,17 @@ With a token, the command will respond to that specific roll, even if it is in a
 
 ```
 [Player channel]
-<GM> !roll ryu.reptilian # Attack Krey!
+<Krey> !roll # Attack Ryu!
+<bot reacts with "N">
 
-<Krey> !vs # Dodge
+<GM> !vs ryu.reptilian # Dodge
 
 <bot> Krey wins!
-       Attack Krey! (ryu.reptilian): 2d6 = [2 3] = 5 (+1, 1/2)
-       Dodge (krey.do-anything): 1d6 = [6] = 6 (!)
+       Attack Ryu! (krey.do-anything): 1d6 = [6] = 6 (!)
+       Dodge (ryu.reptilian): 2d6 = [2 3] = 5 (+1, 1/2)
 
 <Ferret> !roll boots of kicking # Kick down the door!
-<bot reacts with 'X'>
+<bot reacts with "X">
 
 [GM-only channel]
 <GM> !dc X 2d6 # It's a really tough door.
@@ -84,9 +85,17 @@ Sematics for specifying the parent skill are the same as for other commands; the
 Experience points are automatically deducted as required for the level-up.
 
 ```
-!levelup > dodge                     # level up do-anything into dodge
-!levelup ryu.reptilian > slithering  # level up Ryu's reptilian 2 ability into slithering 3
+!levelup > dodge                     # level up "do anything 1" to "dodge 2"
+!levelup ryu.reptilian > slithering  # level up Ryu's "reptilian 2" skill to "slithering 3"
 ```
 
 For fixing mistakes there is an `!edit` command with a number of subcommands.
 For more information type `!help edit`.
+
+
+TODO:
+
+- role-based command restrictions
+- commands for migrating/synchronizing characters between servers
+- unit tests
+- web UI
