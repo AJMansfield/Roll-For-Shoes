@@ -23,7 +23,7 @@ class Player(Base):
     char_id = Column(Integer, ForeignKey('chars.id'))
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     char = relationship('Char', back_populates='players')
 
@@ -39,7 +39,7 @@ class Char(Base):
     xp = Column(Integer, nullable=False, server_default='0')
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     players = relationship('Player', back_populates='char')
     skills = relationship('Skill', cascade="all,delete", back_populates='char')
@@ -59,7 +59,7 @@ class Skill(Base):
     parent_id = Column(Integer, ForeignKey('skills.id'))
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     char = relationship('Char', back_populates='skills')
     parent = relationship('Skill', remote_side=[id], back_populates='children')
@@ -82,7 +82,7 @@ class Roll(Base):
     comment = Column(String)
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     skill = relationship('Skill', back_populates='rolls')
     
