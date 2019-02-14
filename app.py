@@ -1,5 +1,4 @@
 import discord
-import discord
 from discord.ext import commands
 # from discord.utils import get
 import logging
@@ -7,14 +6,13 @@ import re
 from slugify import slugify
 import dice
 import random
-import psycopg2
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
 import asyncio
 import asciitree
 from collections import OrderedDict
 
-from data import engine, Base, Player, Char, Skill
+from data import engine, Base, Player, Char, Skill, Roll
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,19 +34,6 @@ def session_scope():
     finally:
         session.close()
 
-
-def regional_indicator(c:str):
-    return chr(ord(c.strip().lower()[0]) - ord('a') + ord('🇦'))
-
-def token_generator():
-    while True:
-        for c in 'abcdefghijklmnopqrstuvwxyz':
-            yield c
-roll_token = token_generator()
-last_token = 'a'
-rolls = {
-    # <token>: (<skill_id>, <comment>, <context>)
-}
 
 def get_or_create_player(session, ctx):
     player = session.query(Player).filter(Player.user_id == ctx.message.author.id, Player.guild_id == ctx.message.server.id).one_or_none()
@@ -103,7 +88,26 @@ def make_skilltree(session, char, fmt=lambda sk: '{0.id}'.format(sk)):
 
     return '\n'.join(a.replace(' ', space_char) + b for a,b in (tree_re.match(l).groups() for l in msg.split('\n')))
 
+valid_tokens = set('abcdefghijklmnopqrstuvwxyz')
+def pick_token(session, ctx):
+    used_tokens = [a for a, in session.query(Roll.token).filter(Roll.guild_id == ctx.message.server.id).order_by(Roll.created)]
+    available_tokens = valid_tokens.difference(used_tokens)
+    if available_tokens:
+        return True, random.sample(available_tokens, 1)[0]
+    else:
+        return False, used_tokens[0]
 
+def get_roll(session, ctx, token=None):
+    if token:
+        token = slugify(token)
+    if token:
+        return session.query(Roll).filter(Roll.guild_id == ctx.message.server.id, Roll.token == token).one()
+    else:
+        return session.query(Roll).filter(Roll.guild_id == ctx.message.server.id, Roll.channel_id == ctx.message.channel.id).order_by(Roll.created.desc()).first()
+
+
+def regional_indicator(c:str):
+    return chr(ord(c.strip().lower()[0]) - ord('a') + ord('🇦'))
 
 @bot.command(
     pass_context = True,
@@ -233,19 +237,19 @@ async def char(ctx, *, arg=''):
         await bot.add_reaction(ctx.message, '⁉')
 
 def skill_xp_msg(skill):
-    numbers = {
-        0: ':zero:',
-        1: ':one:',
-        2: ':two:',
-        3: ':three:',
-        4: ':four:',
-        5: ':five:', 
-        6: ':six:',
-        7: ':seven:',
-        8: ':eight:',
-        9: ':nine:',
-        10: ':keycap_ten:',
-    }
+    # numbers = {
+    #     0: ':zero:',
+    #     1: ':one:',
+    #     2: ':two:',
+    #     3: ':three:',
+    #     4: ':four:',
+    #     5: ':five:', 
+    #     6: ':six:',
+    #     7: ':seven:',
+    #     8: ':eight:',
+    #     9: ':nine:',
+    #     10: ':keycap_ten:',
+    # }
     if skill.xp is None:
         return ''
     elif skill.xp == 0:
@@ -279,14 +283,19 @@ async def roll(ctx, *, arg=''):
         !roll Doug Doug.run away   # can specify another character
         !roll                      # defaults to using the do-anything skill
     """
-    global last_token
     try:
         with session_scope() as session:
             skill, comment = parse_char_roll(session, ctx, arg)
-            token = next(roll_token)
-            rolls[token] = (skill, comment, ctx)
+            unused, token = pick_token(session, ctx)
+            if not unused:
+                old_roll = get_roll(session, ctx, token=token)
+                await bot.http.remove_reaction(old_roll.message_id, old_roll.channel_id, regional_indicator(old_roll.token), bot.user.id)
+                session.delete(old_roll)
+                session.commit()
+            
+            roll = Roll(guild_id=ctx.message.server.id, message_id=ctx.message.id, channel_id=ctx.message.channel.id, skill=skill, token=token, comment=comment)
+            session.add(roll)
             await bot.add_reaction(ctx.message, regional_indicator(token))
-            last_token = token
     except:
         log.exception("roll")
         await bot.add_reaction(ctx.message, '⁉')
@@ -324,23 +333,18 @@ async def vs(ctx, *, arg=''):
         !vs P               # oppose the roll P with the current character's do anything skill
         !vs Dorg Dorg.run   # oppose the most recent roll with Dorg Dorg's run skill.
     """
-    global last_token
     try:
         with session_scope() as session:
             token, arg = toke_re.match(arg).groups()
-            if not token:
-                token = last_token
-            token = slugify(token)
+            roll = get_roll(session, ctx, token=token)
 
-            a_skill, a_comment, a_ctx = rolls[token]
-            session.add(a_skill)
-            # am, ac, ask, message = 
+            a_skill = roll.skill
+            a_comment = roll.comment
 
             b_skill, b_comment = parse_char_roll(session, ctx, arg)
-            b_ctx = ctx
 
             if a_skill.char == b_skill.char:
-                await bot.add_reaction(b_ctx.message, '⁉')
+                await bot.add_reaction(ctx.message, '⁉')
                 return
 
             ar, arm = roll_skill(a_skill)
@@ -363,19 +367,19 @@ async def vs(ctx, *, arg=''):
 
             embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
 
-            if a_ctx.message.channel != b_ctx.message.channel:
+            if int(roll.channel_id) != int(ctx.message.channel.id):
                 await asyncio.gather(
-                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
-                    bot.send_message(a_ctx.message.channel, embed=embed),
-                    bot.send_message(b_ctx.message.channel, embed=embed),
+                    bot.http.remove_reaction(roll.message_id, roll.channel_id, regional_indicator(roll.token), bot.user.id),
+                    bot.http.send_message(roll.channel_id, None, embed=embed.to_dict()),
+                    bot.send_message(ctx.message.channel, embed=embed),
                 )
             else:
                 await asyncio.gather(
-                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
-                    bot.send_message(a_ctx.message.channel, embed=embed),
+                    bot.http.remove_reaction(roll.message_id, roll.channel_id, regional_indicator(roll.token), bot.user.id),
+                    bot.http.send_message(roll.channel_id, None, embed=embed.to_dict()),
                 )
             
-            del rolls[token]
+            session.delete(roll)
     except:
         log.exception("vs")
         await bot.add_reaction(ctx.message, '⁉')
@@ -411,18 +415,15 @@ async def dc(ctx, *, arg=''):
         !dc 2d6 + 5   # compute 2d6+5 and oppose the most recent roll with the result
 
     """
-    global last_token
     try:
         with session_scope() as session:
-            token, remain = toke_re.match(arg).groups()
-            if not token:
-                token = last_token
-            token = slugify(token)
-            a_skill, a_comment, a_ctx = rolls[token]
-            session.add(a_skill)
+            token, arg = toke_re.match(arg).groups()
+            roll = get_roll(session, ctx, token=token)
 
-            b_die, b_comment = dice_re.match(remain).groups()
-            b_ctx = ctx
+            a_skill = roll.skill
+            a_comment = roll.comment
+
+            b_die, b_comment = dice_re.match(arg).groups()
 
             try:
                 br = int(dice.roll(b_die))
@@ -444,19 +445,19 @@ async def dc(ctx, *, arg=''):
 
             embed = discord.Embed(title=winmsg, description="{} {}\n{} {}".format(a_comment, arm, b_comment, brm))
 
-            if a_ctx.message.channel != b_ctx.message.channel:
+            if int(roll.channel_id) != int(ctx.message.channel.id):
                 await asyncio.gather(
-                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
-                    bot.send_message(a_ctx.message.channel, embed=embed),
-                    bot.send_message(b_ctx.message.channel, embed=embed),
+                    bot.http.remove_reaction(roll.message_id, roll.channel_id, regional_indicator(roll.token), bot.user.id),
+                    bot.http.send_message(roll.channel_id, None, embed=embed.to_dict()),
+                    bot.send_message(ctx.message.channel, embed=embed),
                 )
             else:
                 await asyncio.gather(
-                    bot.remove_reaction(a_ctx.message, regional_indicator(token), bot.user),
-                    bot.send_message(a_ctx.message.channel, embed=embed),
+                    bot.http.remove_reaction(roll.message_id, roll.channel_id, regional_indicator(roll.token), bot.user.id),
+                    bot.http.send_message(roll.channel_id, None, embed=embed.to_dict()),
                 )
             
-            del rolls[token]
+            session.delete(roll)
 
     except:
         log.exception("dc")

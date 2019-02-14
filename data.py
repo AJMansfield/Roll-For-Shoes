@@ -64,24 +64,29 @@ class Skill(Base):
     char = relationship('Char', back_populates='skills')
     parent = relationship('Skill', remote_side=[id], back_populates='children')
     children = relationship('Skill', cascade="all,delete", remote_side=[parent_id], back_populates='parent', order_by='Skill.created')
-
+    rolls = relationship('Roll', cascade="all,delete", back_populates='skill')
+    
     __table_args__ = (UniqueConstraint('char_id', 'slug'),)
 
-# class Roll(Base):
-#     __tablename__ = 'rolls'
+class Roll(Base):
+    __tablename__ = 'rolls'
 
-#     id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
 
-#     guild_id = Column(BigInteger, ForeignKey('guilds.id'), nullable=False)
-#     skill_id = Column(Integer, ForeignKey('skills.id'), nullable=False)
-#     message_id = Column(BigInteger) # discord message ID to remove reaction from
-#     token = Column(String(length=1))
+    guild_id = Column(BigInteger)
+    message_id = Column(BigInteger, nullable=False) # discord message ID to remove reaction from
+    channel_id = Column(BigInteger, nullable=False) # discord channel ID to remove reaction from
 
-#     created = Column(DateTime(timezone=True), server_default=func.now())
-#     modified = Column(DateTime(timezone=True), onupdate=func.now())
+    skill_id = Column(Integer, ForeignKey('skills.id'), nullable=False)
+    token = Column(String(length=1), nullable=False)
+    comment = Column(String)
 
-#     guild = relationship('Guild', back_populates='rolls')
-#     skill = relationship('Skill')
+    created = Column(DateTime(timezone=True), server_default=func.now())
+    modified = Column(DateTime(timezone=True), onupdate=func.now())
+
+    skill = relationship('Skill', back_populates='rolls')
+    
+    __table_args__ = (UniqueConstraint('guild_id', 'token'),)
 
 # class Export(Base):
 #     __tablename__ = 'exports'
