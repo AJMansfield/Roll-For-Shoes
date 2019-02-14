@@ -1,5 +1,6 @@
 
-from sqlalchemy import Column, BigInteger, String, Integer, ForeignKey, DateTime, create_engine
+from sqlalchemy import Column, BigInteger, String, Integer, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import create_engine
 from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -43,6 +44,8 @@ class Char(Base):
     players = relationship('Player', back_populates='char')
     skills = relationship('Skill', cascade="all,delete", back_populates='char')
 
+    __table_args__ = (UniqueConstraint('guild_id', 'slug'),)
+
 class Skill(Base):
     __tablename__ = 'skills'
 
@@ -61,6 +64,8 @@ class Skill(Base):
     char = relationship('Char', back_populates='skills')
     parent = relationship('Skill', remote_side=[id], back_populates='children')
     children = relationship('Skill', cascade="all,delete", remote_side=[parent_id], back_populates='parent', order_by='Skill.created')
+
+    __table_args__ = (UniqueConstraint('char_id', 'slug'),)
 
 # class Roll(Base):
 #     __tablename__ = 'rolls'

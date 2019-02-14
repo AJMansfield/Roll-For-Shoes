@@ -51,7 +51,7 @@ rolls = {
 }
 
 def get_or_create_player(session, ctx):
-    player = session.query(Player).where(user_id=ctx.message.author.id, guild_id=ctx.message.server.id).first()
+    player = session.query(Player).filter(Player.user_id=ctx.message.author.id, Player.guild_id=ctx.message.server.id).first()
     if not player:
         player = Player(user_id=ctx.message.author.id, guild_id=ctx.message.server.id, name=ctx.message.author.name)
         session.add(player)
