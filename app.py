@@ -14,7 +14,7 @@ import asyncio
 import asciitree
 from collections import OrderedDict
 
-from data import engine, Base, Player, Char, Skill
+from data import engine, Base, Guild, Player, Char, Skill
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,10 +50,17 @@ rolls = {
     # <token>: (<skill_id>, <comment>, <context>)
 }
 
+def get_or_create_guild(session, ctx):
+    guild = session.query(Guild).get(ctx.message.server.id)
+    if not guild:
+        guild = Guild(id=ctx.message.server.id)
+        session.add(guild)
+    return guild
+
 def get_or_create_player(session, ctx):
     player = session.query(Player).get(ctx.message.author.id)
     if not player:
-        player = Player(id=ctx.message.author.id, name=ctx.message.author.mention)
+        player = Player(id=ctx.message.author.id, name=ctx.message.author.name)
         session.add(player)
     return player
 
@@ -101,6 +108,8 @@ def make_skilltree(session, char, fmt=lambda sk: '{0.id}'.format(sk)):
     msg = tr(d)
 
     return '\n'.join(a.replace(' ', space_char) + b for a,b in (tree_re.match(l).groups() for l in msg.split('\n')))
+
+
 
 @bot.command(
     pass_context = True,
@@ -184,6 +193,7 @@ async def levelup(ctx, *, arg=''):
             assert base.xp is not None
             assert char.xp >= base.xp
             session.add(Skill(name=skill_name_to, slug=slugify(skill_name_to), level=base.level+1, char=char, parent=base))
+            char.xp -= base.xp
             base.xp = None
     except:
         log.exception("upgrade")
@@ -487,57 +497,142 @@ def levelmsg(skill):
     else:
         return " ({}/{})".format(skill.char.xp, skill.xp)
 
+@bot.group()
+async def edit():
+    """Subcommands for editing characters.
+    """
 
-renamechar_re = re.compile(r'\s*(?:([^.>#0-9]*))?\s*>\s*([^.>#0-9]*)\s*#?.*')
-@bot.command(
+charname_re = re.compile(r'\s*(?:([^.>#0-9]*))?\s*>\s*([^.>#0-9]*)\s*#?.*')
+@edit.command(
     pass_context = True,
 )
-async def renamechar(ctx, *, arg=''):
+async def charname(ctx, *, arg=''):
     """Renames a character.
 
     Change the name of a character, defaulting to the current character.
 
     Usage:
-        !renamechar [CHARACTER] > NEW_NAME [# COMMENT]
+        !edit charname [CHARACTER] > NEW_NAME [# COMMENT]
     Examples:
-        !renamechar Agor > Chief Agor
+        !edit charname Agor > Chief Agor
     """
     try:
-        old_name, new_name = renamechar_re.match(arg).groups()
+        old_name, new_name = charname_re.match(arg).groups()
         with session_scope() as session:
             char = get_char(session, ctx, old_name)
             char.name = new_name
             char.slug = slugify(new_name)
     except:
-        log.exception("renamechar")
+        log.exception("edit charname")
         await bot.add_reaction(ctx.message, '⁉')
     else:
         await bot.add_reaction(ctx.message, '⏫')
 
-@bot.command(
+charxp_re = re.compile(r'\s*(?:([^.>#0-9]*))?\s*>\s*([0-9]*)\s*#?.*')
+@edit.command(
     pass_context = True,
 )
-async def renameskill(ctx, *, arg=''):
+async def charxp(ctx, *, arg=''):
+    """Edits a character's XP total.
+
+    Changes the amount of XP a character has.
+
+    Usage:
+        !edit charxp [CHARACTER] > XP [# COMMENT]
+    Examples:
+        !edit charxp Agor > 5
+    """
+    try:
+        name, xp = charxp_re.match(arg).groups()
+        with session_scope() as session:
+            char = get_char(session, ctx, name)
+            char.xp = int(xp)
+    except:
+        log.exception("edit charxp")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
+
+skillname_re = re.compile(r'\s*(?:([^.>#0-9]*)\.)?([^.>#0-9]*)\s*>\s*([^.>#0-9]*)\s*#?.*')
+@edit.command(
+    pass_context = True,
+)
+async def skillname(ctx, *, arg=''):
     """Renames a skill.
 
     Changes the name of an existing skill. By default uses the current character.
 
     Usage:
-        !renameskill [CHARACTER  .] SKILL > NEW_NAME [# COMMENT]
+        !edit skillname [CHARACTER  .] SKILL > NEW_NAME [# COMMENT]
     Examples:
-        !renameskill sharp shiny club > sharp club
+        !edit skillname sharp shiny club > sharp club
     """
     try:
-        char_name, skill_name, new_name = level_re.match(arg).groups()
+        char_name, skill_name, new_name = skillname_re.match(arg).groups()
         with session_scope() as session:
             skill = get_skill(session, ctx, char_name, skill_name)
             skill.name = new_name
             skill.slug = slugify(new_name)
     except:
-        log.exception("renamechar")
+        log.exception("edit skillname")
         await bot.add_reaction(ctx.message, '⁉')
     else:
         await bot.add_reaction(ctx.message, '⏫')
+
+skillxp_re = re.compile(r'\s*(?:([^.>#0-9]*)\.)?([^.>#0-9]*)\s*>\s*([0-9]*)\s*#?.*')
+@edit.command(
+    pass_context = True,
+)
+async def skillxp(ctx, *, arg=''):
+    """Edits skill XP remaining.
+
+    Changes the amount of XP needed to level a skill.
+
+    Usage:
+        !edit skillxp [CHARACTER  .] SKILL > XP [# COMMENT]
+    Examples:
+        !edit skillxp sharp shiny club > sharp club
+    """
+    try:
+        char_name, skill_name, xp = skillxp_re.match(arg).groups()
+        if not xp:
+            xp = None
+        else:
+            xp = int(xp)
+
+        with session_scope() as session:
+            skill = get_skill(session, ctx, char_name, skill_name)
+            skill.xp = xp
+    except:
+        log.exception("edit skillxp")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
+
+@edit.command(
+    pass_context = True,
+)
+async def skillrm(ctx, *, arg=''):
+    """Removes a skill.
+
+    Deletes a skill and all dependant skills.
+
+    Usage:
+        !edit skillrm [CHARACTER  .] SKILL [# COMMENT]
+    Examples:
+        !edit skillrm sharp shiny club
+    """
+    try:
+        with session_scope() as session:
+            skill, _ = parse_char_roll(session, ctx, arg)
+            assert skill.parent is not None
+            session.delete(skill)
+    except:
+        log.exception("edit skillrm")
+        await bot.add_reaction(ctx.message, '⁉')
+    else:
+        await bot.add_reaction(ctx.message, '⏫')
+
 
 from keys import keys
 if __name__ == '__main__':
