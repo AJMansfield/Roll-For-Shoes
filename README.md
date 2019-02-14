@@ -45,8 +45,8 @@ With a token, the command will respond to that specific roll, even if it is in a
 <GM> !vs ryu.reptilian # Dodge
 
 <bot> Krey wins!
-       Attack Ryu! (krey.do-anything): 1d6 = [6] = 6 (!)
-       Dodge (ryu.reptilian): 2d6 = [2 3] = 5 (+1, 1/2)
+        Attack Ryu! (krey.do-anything): 1d6 = [6] = 6 (!)
+        Dodge (ryu.reptilian): 2d6 = [2 3] = 5 (+1, 1/2)
 
 <Ferret> !roll boots of kicking # Kick down the door!
 <bot reacts with "X">
@@ -56,8 +56,8 @@ With a token, the command will respond to that specific roll, even if it is in a
 
 [both channels simultaneously]
 <bot> Ferret fails!
-       Kick down the door! (ferret.boots-of-kicking): 2d6 = [3 2] = 5 (+1, 7/2)
-       It's a really tough door. DC 2d6 = 9
+        Kick down the door! (ferret.boots-of-kicking): 2d6 = [3 2] = 5 (+1, 7/2)
+        It's a really tough door. DC 2d6 = 9
 ```
 
 When skill rolls are resolved, the bot automatically gives the loser 1 XP and updates both skills with the amount of XP needed to level up.
