@@ -1,6 +1,8 @@
 # Roll For Shoes
 A discord bot for running the Roll For Shoes roleplay system.
 
+This is a brief run-down of how to use the bot. For the full command list and syntax use the `!help` command.
+
 For reference, the complete (400ish word long) system rules are available here: https://gist.github.com/brunobord/8943645
 
 To create a new character, use the `!newchar` command, e.g. `!newchar Krey`, to create a new character named "Krey" with 0 xp and the "do anything 1" ability.
