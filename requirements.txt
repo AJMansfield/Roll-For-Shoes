@@ -1,0 +1,6 @@
+discord.py
+sqlalchemy
+psycopg2
+python-slugify
+dice
+asciitree
