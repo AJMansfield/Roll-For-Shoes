@@ -35,7 +35,7 @@ class Char(Base):
     guild_id = Column(BigInteger) # discord guild ID
 
     name = Column(String, nullable=False)
-    slug = Column(String, nullable=False, unique=True)
+    slug = Column(String, nullable=False)
     xp = Column(Integer, nullable=False, server_default='0')
 
     created = Column(DateTime(timezone=True), server_default=func.now())

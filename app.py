@@ -51,7 +51,7 @@ rolls = {
 }
 
 def get_or_create_player(session, ctx):
-    player = session.query(Player).filter(Player.user_id=ctx.message.author.id, Player.guild_id=ctx.message.server.id).first()
+    player = session.query(Player).filter(Player.user_id == ctx.message.author.id, Player.guild_id == ctx.message.server.id).one_or_none()
     if not player:
         player = Player(user_id=ctx.message.author.id, guild_id=ctx.message.server.id, name=ctx.message.author.name)
         session.add(player)
@@ -73,7 +73,8 @@ def get_skill(session, ctx, char_name, skill_name):
         char_slug = slugify(char_name)
         skill = session.query(Skill).join(Skill.char).filter(Char.slug == char_slug, Skill.slug == skill_slug).one()
     else:
-        skill = session.query(Skill).join(Skill.char).join(Char.players).filter(Player.user_id == ctx.message.author.id, Skill.slug == skill_slug).one()
+        skill = session.query(Skill).join(Skill.char).join(Char.players).filter(
+            Skill.slug == skill_slug, Char.guild_id == ctx.message.server.id, Player.user_id == ctx.message.author.id ).one()
     return skill
 
 def get_tree(session, skill, fmt=lambda sk: '{0.id}'.format(sk)):
