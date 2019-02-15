@@ -20,10 +20,10 @@ class Player(Base):
     guild_id = Column(BigInteger) # discord guild ID
 
     name = Column(String)
-    char_id = Column(Integer, ForeignKey('chars.id'))
+    char_id = Column(Integer, ForeignKey('chars.id', ondelete='cascade'))
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.current_timestamp())
 
     char = relationship('Char', back_populates='players')
 
@@ -39,10 +39,10 @@ class Char(Base):
     xp = Column(Integer, nullable=False, server_default='0')
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.current_timestamp())
 
-    players = relationship('Player', back_populates='char')
-    skills = relationship('Skill', cascade="all,delete", back_populates='char')
+    players = relationship('Player', back_populates='char', cascade="all, delete", passive_deletes=True)
+    skills = relationship('Skill', back_populates='char', cascade="all, delete", passive_deletes=True)
 
     __table_args__ = (UniqueConstraint('guild_id', 'slug'),)
 
@@ -55,16 +55,16 @@ class Skill(Base):
     slug = Column(String, nullable=False, server_default='do-anything')
     level = Column(Integer, nullable=False, server_default='1')
     xp = Column(Integer)
-    char_id = Column(Integer, ForeignKey('chars.id'), nullable=False)
-    parent_id = Column(Integer, ForeignKey('skills.id'))
+    char_id = Column(Integer, ForeignKey('chars.id', ondelete='cascade'), nullable=False)
+    parent_id = Column(Integer, ForeignKey('skills.id', ondelete='cascade'))
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.current_timestamp())
 
     char = relationship('Char', back_populates='skills')
-    parent = relationship('Skill', remote_side=[id], back_populates='children')
-    children = relationship('Skill', cascade="all,delete", remote_side=[parent_id], back_populates='parent', order_by='Skill.created')
-    rolls = relationship('Roll', cascade="all,delete", back_populates='skill')
+    parent = relationship('Skill', remote_side=[id])
+    children = relationship('Skill', remote_side=[parent_id], back_populates='parent', order_by='Skill.created', cascade="all, delete", passive_deletes=True)
+    rolls = relationship('Roll', back_populates='skill', cascade="all, delete", passive_deletes=True)
     
     __table_args__ = (UniqueConstraint('char_id', 'slug'),)
 
@@ -77,12 +77,12 @@ class Roll(Base):
     message_id = Column(BigInteger, nullable=False) # discord message ID to remove reaction from
     channel_id = Column(BigInteger, nullable=False) # discord channel ID to remove reaction from
 
-    skill_id = Column(Integer, ForeignKey('skills.id'), nullable=False)
+    skill_id = Column(Integer, ForeignKey('skills.id', ondelete='cascade'), nullable=False)
     token = Column(String(length=1), nullable=False)
     comment = Column(String)
 
     created = Column(DateTime(timezone=True), server_default=func.now())
-    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    modified = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.current_timestamp())
 
     skill = relationship('Skill', back_populates='rolls')
     
